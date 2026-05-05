@@ -1,12 +1,8 @@
 const API = "https://api.dofusdb.fr";
-const PAGE_LIMIT = 500;
 const prices = {};
 const recipeCache = new Map();
 const monsterCache = new Map();
-const itemCache = new Map();
-let allCraftableItems = [];
 
-const itemSearchInput = document.getElementById("itemSearch");
 const itemSelect = document.getElementById("itemSelect");
 const quantityInput = document.getElementById("quantityInput");
 const calculateBtn = document.getElementById("calculateBtn");
@@ -24,49 +20,16 @@ function getName(obj) {
   return obj?.name?.pt || obj?.name?.en || obj?.resultName?.pt || obj?.resultName?.en || `ID ${obj.id ?? "?"}`;
 }
 
-function populateItemSelect(filteredItems) {
-  const currentValue = itemSelect.value;
-  itemSelect.innerHTML = "";
-  filteredItems.forEach((item) => {
+async function loadItems() {
+  const data = await fetchJson("/items?$limit=200&$sort[level]=1");
+  const craftables = data.data.filter((i) => i.recipeSlots > 0);
+  craftables.forEach((item) => {
     const option = document.createElement("option");
     option.value = String(item.id);
     option.textContent = `${getName(item)} (Lv.${item.level})`;
+    option.dataset.name = getName(item);
     itemSelect.appendChild(option);
   });
-  if (filteredItems.some((i) => String(i.id) === currentValue)) {
-    itemSelect.value = currentValue;
-  }
-}
-
-function filterItemsByName(query) {
-  const q = query.trim().toLowerCase();
-  if (!q) return allCraftableItems;
-  return allCraftableItems.filter((item) => getName(item).toLowerCase().includes(q));
-}
-
-async function loadAllItems() {
-  const items = [];
-  let skip = 0;
-  let total = Infinity;
-
-  while (skip < total) {
-    const payload = await fetchJson(`/items?$limit=${PAGE_LIMIT}&$skip=${skip}&$sort[level]=1`);
-    total = payload.total;
-    const page = payload.data || [];
-    items.push(...page);
-    skip += PAGE_LIMIT;
-  }
-
-  allCraftableItems = items.filter((i) => i.recipeSlots > 0);
-  allCraftableItems.forEach((item) => itemCache.set(item.id, item));
-  populateItemSelect(allCraftableItems);
-}
-
-async function getItem(itemId) {
-  if (itemCache.has(itemId)) return itemCache.get(itemId);
-  const item = await fetchJson(`/items/${itemId}`);
-  itemCache.set(itemId, item);
-  return item;
 }
 
 async function getRecipeByResultId(resultId) {
@@ -78,12 +41,9 @@ async function getRecipeByResultId(resultId) {
 }
 
 async function buildRecipeNode(itemId, qty = 1, depth = 0) {
-  const item = await getItem(itemId);
+  const item = await fetchJson(`/items/${itemId}`);
   const name = getName(item);
-
-  if (depth > 5) {
-    return { id: itemId, name, qty, leaves: [{ id: itemId, name, qty, dropMonsterIds: item.dropMonsterIds || [] }] };
-  }
+  if (depth > 5) return { id: itemId, name, qty, leaves: [{ id: itemId, name, qty, dropMonsterIds: item.dropMonsterIds || [] }] };
 
   const recipe = await getRecipeByResultId(itemId);
   if (!recipe) {
@@ -113,7 +73,6 @@ function calculateTotals(leaves) {
     buy += p * g.qty;
     craft += p * g.qty * 0.85;
   });
-
   return { grouped: Object.values(grouped), buy, craft };
 }
 
@@ -121,13 +80,11 @@ function renderTree(node) {
   const li = document.createElement("li");
   const input = `<input type="number" data-price="${node.id}" value="${prices[node.id] ?? 0}" min="0" step="1" style="width:110px">`;
   li.innerHTML = `<div class="line"><span>${node.qty}x ${node.name}</span><span class="badge">Preço unitário: ${input}</span></div>`;
-
   if (node.children?.length) {
     const ul = document.createElement("ul");
     node.children.forEach((child) => ul.appendChild(renderTree(child)));
     li.appendChild(ul);
   }
-
   return li;
 }
 
@@ -156,13 +113,6 @@ async function renderDrops(grouped) {
 }
 
 async function render() {
-  if (!itemSelect.value) {
-    summary.innerHTML = '<div class="metric">Nenhum item encontrado para esse filtro.</div>';
-    recipeTree.innerHTML = "";
-    dropsPanel.innerHTML = "";
-    return;
-  }
-
   try {
     const itemId = Number(itemSelect.value);
     const qty = Number(quantityInput.value) || 1;
@@ -191,16 +141,5 @@ async function render() {
   }
 }
 
-itemSearchInput.addEventListener("input", () => {
-  const filtered = filterItemsByName(itemSearchInput.value);
-  populateItemSelect(filtered);
-  render();
-});
-
 calculateBtn.addEventListener("click", render);
-
-loadAllItems()
-  .then(render)
-  .catch((err) => {
-    summary.innerHTML = `<div class="metric">Falha ao carregar itens: ${err.message}</div>`;
-  });
+loadItems().then(render);
