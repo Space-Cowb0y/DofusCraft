@@ -1,0 +1,10 @@
+{
+  "name": "dofuscraft",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync:data": "node scripts/sync-data.mjs",
+    "start": "python3 -m http.server 5173"
+  }
+}
