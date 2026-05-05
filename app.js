@@ -1,5 +1,5 @@
 const API = "https://api.dofusdb.fr";
-const PAGE_LIMIT = 500;
+const PAGE_LIMIT = 50;
 const prices = {};
 const recipeCache = new Map();
 const monsterCache = new Map();
@@ -36,7 +36,8 @@ async function loadAllItemsOnce() {
     total = payload.total;
     const page = payload.data || [];
     items.push(...page);
-    skip += PAGE_LIMIT;
+    skip += page.length;
+    if (!page.length) break;
   }
 
   allItems = items.filter((i) => i.recipeSlots > 0);
