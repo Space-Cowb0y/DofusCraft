@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dofus Craft Planner</title>
+  <link rel="stylesheet" href="src/styles.css" />
+</head>
+<body>
+  <main class="app">
+    <header>
+      <h1>Dofus Craft Planner</h1>
+      <button id="refreshData">Atualizar cache local</button>
+    </header>
+
+    <section class="panel">
+      <h2>Buscar itens</h2>
+      <input id="searchInput" placeholder="Digite o nome do item..." />
+      <div id="searchResults" class="list"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Itens selecionados</h2>
+      <div id="selectedItems" class="list"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Receita consolidada</h2>
+      <div id="recipeList" class="list"></div>
+      <div class="totals" id="totals"></div>
+    </section>
+  </main>
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>
