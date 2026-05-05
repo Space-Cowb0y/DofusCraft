@@ -12,20 +12,31 @@ const els = {
   searchResults: document.getElementById('searchResults'),
   selectedItems: document.getElementById('selectedItems'),
   recipeList: document.getElementById('recipeList'),
-  totals: document.getElementById('totals'),
-  refreshData: document.getElementById('refreshData')
+  totals: document.getElementById('totals')
 };
 
 const itemById = new Map();
 
 async function loadCache() {
-  const [items, monsters] = await Promise.all([
-    fetch('data/items.json').then(r => r.json()),
-    fetch('data/monsters.json').then(r => r.json())
+  const [itemsRes, monstersRes] = await Promise.all([
+    fetch('data/items.json'),
+    fetch('data/monsters.json')
   ]);
+
+  if (!itemsRes.ok || !monstersRes.ok) {
+    throw new Error('Arquivos de cache não encontrados em /data. Rode npm run sync:data.');
+  }
+
+  const [items, monsters] = await Promise.all([itemsRes.json(), monstersRes.json()]);
+  if (!Array.isArray(items) || !Array.isArray(monsters)) {
+    throw new Error('Formato inválido dos arquivos JSON em /data.');
+  }
+
   state.items = items;
   state.monsters = monsters;
+  itemById.clear();
   items.forEach(i => itemById.set(i.id, i));
+  console.info(`Cache carregado de data/items.json (${items.length} itens) e data/monsters.json (${monsters.length} monstros).`);
   renderSearch();
 }
 
@@ -159,10 +170,8 @@ function bindRecipeInputs() {
 }
 
 els.searchInput.addEventListener('input', renderSearch);
-els.refreshData.addEventListener('click', async () => {
-  alert('Rode no terminal: npm run sync:data para atualizar o cache local.');
-});
 
-loadCache().catch(() => {
-  els.searchResults.innerHTML = '<small>Cache não encontrado. Rode npm run sync:data.</small>';
+loadCache().catch((err) => {
+  console.error(err);
+  els.searchResults.innerHTML = '<small>Cache não encontrado em /data ou inválido. Rode npm run sync:data.</small>';
 });
