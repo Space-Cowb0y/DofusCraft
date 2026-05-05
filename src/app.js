@@ -17,26 +17,42 @@ const els = {
 
 const itemById = new Map();
 
+async function fetchJsonFromCandidates(paths) {
+  const attempts = [];
+  for (const path of paths) {
+    try {
+      const res = await fetch(path, { cache: 'no-store' });
+      attempts.push(`${path} -> ${res.status}`);
+      if (!res.ok) continue;
+      const json = await res.json();
+      if (Array.isArray(json)) return { json, path };
+      attempts.push(`${path} -> formato inválido`);
+    } catch (err) {
+      attempts.push(`${path} -> ${err?.message || 'erro desconhecido'}`);
+    }
+  }
+  throw new Error(`Não foi possível carregar o cache JSON. Tentativas: ${attempts.join(' | ')}`);
+}
+
 async function loadCache() {
-  const [itemsRes, monstersRes] = await Promise.all([
-    fetch('data/items.json'),
-    fetch('data/monsters.json')
+  if (window.location.protocol === 'file:') {
+    throw new Error('Abra o app via servidor HTTP (ex.: npm start). O navegador bloqueia fetch de JSON no protocolo file://.');
+  }
+
+  const itemCandidates = ['./data/items.json', '/data/items.json', 'data/items.json'];
+  const monsterCandidates = ['./data/monsters.json', '/data/monsters.json', 'data/monsters.json'];
+
+  const [{ json: items, path: itemsPath }, { json: monsters, path: monstersPath }] = await Promise.all([
+    fetchJsonFromCandidates(itemCandidates),
+    fetchJsonFromCandidates(monsterCandidates)
   ]);
-
-  if (!itemsRes.ok || !monstersRes.ok) {
-    throw new Error('Arquivos de cache não encontrados em /data. Rode npm run sync:data.');
-  }
-
-  const [items, monsters] = await Promise.all([itemsRes.json(), monstersRes.json()]);
-  if (!Array.isArray(items) || !Array.isArray(monsters)) {
-    throw new Error('Formato inválido dos arquivos JSON em /data.');
-  }
 
   state.items = items;
   state.monsters = monsters;
   itemById.clear();
   items.forEach(i => itemById.set(i.id, i));
-  console.info(`Cache carregado de data/items.json (${items.length} itens) e data/monsters.json (${monsters.length} monstros).`);
+
+  console.info(`Cache carregado com sucesso: ${itemsPath} (${items.length} itens), ${monstersPath} (${monsters.length} monstros).`);
   renderSearch();
 }
 
@@ -173,5 +189,5 @@ els.searchInput.addEventListener('input', renderSearch);
 
 loadCache().catch((err) => {
   console.error(err);
-  els.searchResults.innerHTML = '<small>Cache não encontrado em /data ou inválido. Rode npm run sync:data.</small>';
+  els.searchResults.innerHTML = `<small>${err.message}</small>`;
 });
