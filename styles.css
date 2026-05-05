@@ -53,3 +53,6 @@ button { cursor: pointer; background: linear-gradient(90deg,var(--accent),#16a34
 .drop-card { padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-soft); }
 .drop-card h3{ margin: 0 0 8px; font-size: 1rem; }
 @media (max-width: 1000px){ .controls,.summary{grid-column: span 12;} .summary{grid-template-columns:1fr;} }
+.search-results{ display:grid; gap:6px; max-height:220px; overflow:auto; }
+.search-item{ text-align:left; background:#0f141b; color:var(--text); border:1px solid var(--border); border-radius:8px; padding:8px; cursor:pointer; }
+.search-item:hover{ border-color:var(--accent-2); }

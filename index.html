@@ -14,8 +14,9 @@
 
     <main class="layout">
       <section class="card controls">
-        <label for="itemSelect">Item alvo</label>
-        <select id="itemSelect"></select>
+        <label for="itemSearch">Pesquisar item</label>
+        <input id="itemSearch" type="text" placeholder="Digite o nome do item..." autocomplete="off" />
+        <div id="searchResults" class="search-results"></div>
 
         <label for="quantityInput">Quantidade desejada</label>
         <input id="quantityInput" type="number" min="1" value="1" />

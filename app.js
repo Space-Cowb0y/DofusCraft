@@ -1,9 +1,14 @@
 const API = "https://api.dofusdb.fr";
+const PAGE_LIMIT = 500;
 const prices = {};
 const recipeCache = new Map();
 const monsterCache = new Map();
+const itemCache = new Map();
+let allItems = null;
+let selectedItemId = null;
 
-const itemSelect = document.getElementById("itemSelect");
+const itemSearchInput = document.getElementById("itemSearch");
+const searchResults = document.getElementById("searchResults");
 const quantityInput = document.getElementById("quantityInput");
 const calculateBtn = document.getElementById("calculateBtn");
 const summary = document.getElementById("summary");
@@ -20,16 +25,30 @@ function getName(obj) {
   return obj?.name?.pt || obj?.name?.en || obj?.resultName?.pt || obj?.resultName?.en || `ID ${obj.id ?? "?"}`;
 }
 
-async function loadItems() {
-  const data = await fetchJson("/items?$limit=200&$sort[level]=1");
-  const craftables = data.data.filter((i) => i.recipeSlots > 0);
-  craftables.forEach((item) => {
-    const option = document.createElement("option");
-    option.value = String(item.id);
-    option.textContent = `${getName(item)} (Lv.${item.level})`;
-    option.dataset.name = getName(item);
-    itemSelect.appendChild(option);
-  });
+async function loadAllItemsOnce() {
+  if (allItems) return allItems;
+  const items = [];
+  let skip = 0;
+  let total = Infinity;
+
+  while (skip < total) {
+    const payload = await fetchJson(`/items?$limit=${PAGE_LIMIT}&$skip=${skip}&$sort[level]=1`);
+    total = payload.total;
+    const page = payload.data || [];
+    items.push(...page);
+    skip += PAGE_LIMIT;
+  }
+
+  allItems = items.filter((i) => i.recipeSlots > 0);
+  allItems.forEach((item) => itemCache.set(item.id, item));
+  return allItems;
+}
+
+async function getItem(itemId) {
+  if (itemCache.has(itemId)) return itemCache.get(itemId);
+  const item = await fetchJson(`/items/${itemId}`);
+  itemCache.set(itemId, item);
+  return item;
 }
 
 async function getRecipeByResultId(resultId) {
@@ -40,22 +59,52 @@ async function getRecipeByResultId(resultId) {
   return recipe;
 }
 
+function renderSearchResults(results) {
+  searchResults.innerHTML = "";
+  results.slice(0, 20).forEach((item) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "search-item";
+    btn.textContent = `${getName(item)} (Lv.${item.level})`;
+    btn.addEventListener("click", () => {
+      selectedItemId = item.id;
+      itemSearchInput.value = getName(item);
+      searchResults.innerHTML = "";
+      render();
+    });
+    searchResults.appendChild(btn);
+  });
+}
+
+async function handleSearchInput() {
+  const query = itemSearchInput.value.trim().toLowerCase();
+  selectedItemId = null;
+
+  if (!query) {
+    searchResults.innerHTML = "";
+    summary.innerHTML = '<div class="metric">Digite para buscar um item.</div>';
+    recipeTree.innerHTML = "";
+    dropsPanel.innerHTML = "";
+    return;
+  }
+
+  const items = await loadAllItemsOnce();
+  const matches = items.filter((item) => getName(item).toLowerCase().includes(query));
+  renderSearchResults(matches);
+}
+
 async function buildRecipeNode(itemId, qty = 1, depth = 0) {
-  const item = await fetchJson(`/items/${itemId}`);
+  const item = await getItem(itemId);
   const name = getName(item);
   if (depth > 5) return { id: itemId, name, qty, leaves: [{ id: itemId, name, qty, dropMonsterIds: item.dropMonsterIds || [] }] };
 
   const recipe = await getRecipeByResultId(itemId);
-  if (!recipe) {
-    return { id: itemId, name, qty, dropMonsterIds: item.dropMonsterIds || [], leaves: [{ id: itemId, name, qty, dropMonsterIds: item.dropMonsterIds || [] }] };
-  }
+  if (!recipe) return { id: itemId, name, qty, dropMonsterIds: item.dropMonsterIds || [], leaves: [{ id: itemId, name, qty, dropMonsterIds: item.dropMonsterIds || [] }] };
 
   const children = [];
   for (let i = 0; i < recipe.ingredientIds.length; i += 1) {
-    const child = await buildRecipeNode(recipe.ingredientIds[i], recipe.quantities[i] * qty, depth + 1);
-    children.push(child);
+    children.push(await buildRecipeNode(recipe.ingredientIds[i], recipe.quantities[i] * qty, depth + 1));
   }
-
   return { id: itemId, name, qty, children, leaves: children.flatMap((c) => c.leaves) };
 }
 
@@ -65,7 +114,6 @@ function calculateTotals(leaves) {
     if (!grouped[leaf.id]) grouped[leaf.id] = { ...leaf, qty: 0 };
     grouped[leaf.id].qty += leaf.qty;
   });
-
   let buy = 0;
   let craft = 0;
   Object.values(grouped).forEach((g) => {
@@ -78,8 +126,7 @@ function calculateTotals(leaves) {
 
 function renderTree(node) {
   const li = document.createElement("li");
-  const input = `<input type="number" data-price="${node.id}" value="${prices[node.id] ?? 0}" min="0" step="1" style="width:110px">`;
-  li.innerHTML = `<div class="line"><span>${node.qty}x ${node.name}</span><span class="badge">Preço unitário: ${input}</span></div>`;
+  li.innerHTML = `<div class="line"><span>${node.qty}x ${node.name}</span><span class="badge">Preço unitário: <input type="number" data-price="${node.id}" value="${prices[node.id] ?? 0}" min="0" step="1" style="width:110px"></span></div>`;
   if (node.children?.length) {
     const ul = document.createElement("ul");
     node.children.forEach((child) => ul.appendChild(renderTree(child)));
@@ -104,42 +151,49 @@ async function renderDrops(grouped) {
   dropsPanel.innerHTML = "";
   for (const res of grouped) {
     if (!res.dropMonsterIds?.length) continue;
-    const monsterNames = await getMonsterNames(res.dropMonsterIds.slice(0, 8));
     const card = document.createElement("div");
     card.className = "drop-card";
-    card.innerHTML = `<h3>${res.name} (${res.qty})</h3><div><b>Dropa de:</b> ${monsterNames.join(", ")}</div>`;
+    const names = await getMonsterNames(res.dropMonsterIds.slice(0, 8));
+    card.innerHTML = `<h3>${res.name} (${res.qty})</h3><div><b>Dropa de:</b> ${names.join(", ")}</div>`;
     dropsPanel.appendChild(card);
   }
 }
 
 async function render() {
-  try {
-    const itemId = Number(itemSelect.value);
-    const qty = Number(quantityInput.value) || 1;
-    const root = await buildRecipeNode(itemId, qty);
-    const { grouped, buy, craft } = calculateTotals(root.leaves);
-
-    summary.innerHTML = `<div class="metric"><div class="label">Custo para comprar lote</div><div class="value">${buy.toLocaleString("pt-BR")} K</div></div>
-    <div class="metric"><div class="label">Custo médio de fabricar</div><div class="value">${craft.toLocaleString("pt-BR")} K</div></div>
-    <div class="metric"><div class="label">Economia estimada</div><div class="value">${(buy - craft).toLocaleString("pt-BR")} K</div></div>`;
-
+  if (!selectedItemId) {
+    summary.innerHTML = '<div class="metric">Selecione um item na busca para calcular.</div>';
     recipeTree.innerHTML = "";
-    const ul = document.createElement("ul");
-    ul.appendChild(renderTree(root));
-    recipeTree.appendChild(ul);
-
-    document.querySelectorAll("[data-price]").forEach((el) => {
-      el.addEventListener("input", (e) => {
-        prices[Number(e.target.dataset.price)] = Number(e.target.value) || 0;
-        render();
-      });
-    });
-
-    await renderDrops(grouped);
-  } catch (err) {
-    summary.innerHTML = `<div class="metric">Falha ao consultar API do DofusDB: ${err.message}</div>`;
+    dropsPanel.innerHTML = "";
+    return;
   }
+
+  const qty = Number(quantityInput.value) || 1;
+  const root = await buildRecipeNode(selectedItemId, qty);
+  const { grouped, buy, craft } = calculateTotals(root.leaves);
+
+  summary.innerHTML = `<div class="metric"><div class="label">Custo para comprar lote</div><div class="value">${buy.toLocaleString("pt-BR")} K</div></div>
+  <div class="metric"><div class="label">Custo médio de fabricar</div><div class="value">${craft.toLocaleString("pt-BR")} K</div></div>
+  <div class="metric"><div class="label">Economia estimada</div><div class="value">${(buy - craft).toLocaleString("pt-BR")} K</div></div>`;
+
+  recipeTree.innerHTML = "";
+  const ul = document.createElement("ul");
+  ul.appendChild(renderTree(root));
+  recipeTree.appendChild(ul);
+
+  document.querySelectorAll("[data-price]").forEach((el) => {
+    el.addEventListener("input", (e) => {
+      prices[Number(e.target.dataset.price)] = Number(e.target.value) || 0;
+      render();
+    });
+  });
+
+  await renderDrops(grouped);
 }
 
-calculateBtn.addEventListener("click", render);
-loadItems().then(render);
+itemSearchInput.addEventListener("input", () => {
+  handleSearchInput().catch((err) => {
+    summary.innerHTML = `<div class="metric">Falha na busca: ${err.message}</div>`;
+  });
+});
+calculateBtn.addEventListener("click", () => render());
+render();
