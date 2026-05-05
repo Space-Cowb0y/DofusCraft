@@ -12,20 +12,47 @@ const els = {
   searchResults: document.getElementById('searchResults'),
   selectedItems: document.getElementById('selectedItems'),
   recipeList: document.getElementById('recipeList'),
-  totals: document.getElementById('totals'),
-  refreshData: document.getElementById('refreshData')
+  totals: document.getElementById('totals')
 };
 
 const itemById = new Map();
 
+async function fetchJsonFromCandidates(paths) {
+  const attempts = [];
+  for (const path of paths) {
+    try {
+      const res = await fetch(path, { cache: 'no-store' });
+      attempts.push(`${path} -> ${res.status}`);
+      if (!res.ok) continue;
+      const json = await res.json();
+      if (Array.isArray(json)) return { json, path };
+      attempts.push(`${path} -> formato inválido`);
+    } catch (err) {
+      attempts.push(`${path} -> ${err?.message || 'erro desconhecido'}`);
+    }
+  }
+  throw new Error(`Não foi possível carregar o cache JSON. Tentativas: ${attempts.join(' | ')}`);
+}
+
 async function loadCache() {
-  const [items, monsters] = await Promise.all([
-    fetch('data/items.json').then(r => r.json()),
-    fetch('data/monsters.json').then(r => r.json())
+  if (window.location.protocol === 'file:') {
+    throw new Error('Abra o app via servidor HTTP (ex.: npm start). O navegador bloqueia fetch de JSON no protocolo file://.');
+  }
+
+  const itemCandidates = ['./data/items.json', '/data/items.json', 'data/items.json'];
+  const monsterCandidates = ['./data/monsters.json', '/data/monsters.json', 'data/monsters.json'];
+
+  const [{ json: items, path: itemsPath }, { json: monsters, path: monstersPath }] = await Promise.all([
+    fetchJsonFromCandidates(itemCandidates),
+    fetchJsonFromCandidates(monsterCandidates)
   ]);
+
   state.items = items;
   state.monsters = monsters;
+  itemById.clear();
   items.forEach(i => itemById.set(i.id, i));
+
+  console.info(`Cache carregado com sucesso: ${itemsPath} (${items.length} itens), ${monstersPath} (${monsters.length} monstros).`);
   renderSearch();
 }
 
@@ -159,10 +186,8 @@ function bindRecipeInputs() {
 }
 
 els.searchInput.addEventListener('input', renderSearch);
-els.refreshData.addEventListener('click', async () => {
-  alert('Rode no terminal: npm run sync:data para atualizar o cache local.');
-});
 
-loadCache().catch(() => {
-  els.searchResults.innerHTML = '<small>Cache não encontrado. Rode npm run sync:data.</small>';
+loadCache().catch((err) => {
+  console.error(err);
+  els.searchResults.innerHTML = `<small>${err.message}</small>`;
 });
