@@ -4,11 +4,11 @@ const BASE = 'https://api.dofusdb.fr';
 const LIMIT = 50;
 
 async function fetchAll(endpoint) {
-  let page = 1;
+  let page = 0;
   const results = [];
 
   while (true) {
-    const url = `${BASE}/${endpoint}?page=${page}&limit=${LIMIT}`;
+    const url = `${BASE}/${endpoint}?$limit=${LIMIT}&$skip=${page * LIMIT}&$sort[level]=1`;
     const res = await fetch(url);
     if (!res.ok) {
       throw new Error(`Erro ao buscar ${url}: ${res.status}`);
