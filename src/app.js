@@ -56,7 +56,7 @@ async function loadCache() {
   renderSearch();
 }
 
-function normalize(txt) { return (txt || '').toLowerCase(); }
+function normalize(txt) { return String(txt ?? '').toLowerCase(); }
 
 function renderSearch() {
   const q = normalize(els.searchInput.value);
